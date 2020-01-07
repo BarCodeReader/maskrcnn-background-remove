@@ -9,7 +9,6 @@ from maskrcnn_benchmark.structures.image_list import to_image_list
 from maskrcnn_benchmark.modeling.roi_heads.mask_head.inference import Masker
 from maskrcnn_benchmark import layers as L
 from maskrcnn_benchmark.utils import cv2_util
-import numpy as np
 
 class Resize(object):
     def __init__(self, min_size, max_size):
@@ -209,23 +208,18 @@ class COCODemo(object):
         """
         predictions = self.compute_prediction(image)
         top_predictions = self.select_top_predictions(predictions)
-        #print(top_predictions.get_field("mask").numpy().shape)
-        #print(top_predictions.get_field("mask").numpy()[0].shape)
-        #print(predictions.get_field("labels"))
-        
+
         result = image.copy()
         if self.show_mask_heatmaps:
             return self.create_mask_montage(result, top_predictions)
-        result, boxSize, boxCrop = self.overlay_boxes(result, top_predictions)
+        result = self.overlay_boxes(result, top_predictions)
         if self.cfg.MODEL.MASK_ON:
-            #print("result")
-            #result = self.overlay_mask(result, top_predictions)
-            result,is_car = self.overlay_mask_full(result, top_predictions, boxSize, boxCrop)
+            result = self.overlay_mask(result, top_predictions)
         if self.cfg.MODEL.KEYPOINT_ON:
             result = self.overlay_keypoints(result, top_predictions)
-        #result = self.overlay_class_names(result, top_predictions)
+        result = self.overlay_class_names(result, top_predictions)
 
-        return result,is_car
+        return result
 
     def compute_prediction(self, original_image):
         """
@@ -293,7 +287,7 @@ class COCODemo(object):
         colors = (colors % 255).numpy().astype("uint8")
         return colors
 
-    def overlay_boxes(self, image, predictions, draw = False):
+    def overlay_boxes(self, image, predictions):
         """
         Adds the predicted boxes on top of the image
 
@@ -306,21 +300,16 @@ class COCODemo(object):
         boxes = predictions.bbox
 
         colors = self.compute_colors_for_labels(labels).tolist()
-        
-        box_size = []
-        box_crop = []
 
         for box, color in zip(boxes, colors):
             box = box.to(torch.int64)
             top_left, bottom_right = box[:2].tolist(), box[2:].tolist()
-            if draw:
-                image = cv2.rectangle(image, tuple(top_left), tuple(bottom_right), tuple(color), 1)
-            bsize = (bottom_right[0]-top_left[0])*(bottom_right[1]-top_left[1])
-            box_size.append(bsize)
-            box_crop.append([top_left,bottom_right])
-            
-        return image, box_size, box_crop
-    
+            image = cv2.rectangle(
+                image, tuple(top_left), tuple(bottom_right), tuple(color), 1
+            )
+
+        return image
+
     def overlay_mask(self, image, predictions):
         """
         Adds the instances contours for each predicted object.
@@ -337,7 +326,7 @@ class COCODemo(object):
         colors = self.compute_colors_for_labels(labels).tolist()
 
         for mask, color in zip(masks, colors):
-            thresh = mask[0, :, :, None].astype(np.uint8)
+            thresh = mask[0, :, :, None]
             contours, hierarchy = cv2_util.findContours(
                 thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
             )
@@ -346,63 +335,6 @@ class COCODemo(object):
         composite = image
 
         return composite
-    
-    ################################################################################
-    def overlay_mask_full(self, image, predictions, boxsize, boxcrop, draw = False):
-
-        masks = predictions.get_field("mask").numpy()
-        labels = predictions.get_field("labels")
-        lab_list = labels.tolist()
-
-        colors = self.compute_colors_for_labels(labels).tolist()
-        #print(masks[0][0, :, :, None].astype(np.uint8))
-        #print(masks[0][0, :, :, None].astype(np.uint8).shape)
-        #single_mask = masks[4][0, :, :, None].astype(np.uint8)
-        #print(colors)
-        #mask3 = cv2.cvtColor(single_mask, cv2.COLOR_GRAY2BGR)
-        #print(np.array(masks3)[0].astype(np.uint8))
-        #print(mask3)
-        threshs = []
-        
-        for mask, color, lablist in zip(masks, colors, lab_list):
-            thresh = mask[0, :, :, None].astype(np.uint8)
-            contours, hierarchy = cv2_util.findContours(
-                thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
-            #print(np.array(contours))
-            if draw:
-                image = cv2.drawContours(image, contours, -1, color, 3)
-            #if lablist==3:
-            thresh = thresh*255
-            threshs.append(thresh)
-            #image = image * mask.astype(np.uint8)
-        #image = cv2.bitwise_and(image, mask3)
-        #print(image.shape)
-        car_thresh = []
-        car_boxsize = []
-        car_boxcrop = []
-        is_car = True
-        for i in range(len(lab_list)):
-            if lab_list[i]==3:
-                car_thresh.append(threshs[i])
-                car_boxsize.append(boxsize[i])
-                car_boxcrop.append(boxcrop[i])
-        try:
-            largest_thresh = np.argmax(np.array(car_boxsize))
-            image = cv2.bitwise_not(image)
-            image = cv2.bitwise_and(image, cv2.cvtColor(threshs[largest_thresh], cv2.COLOR_GRAY2BGR))
-            image = cv2.bitwise_not(image)
-            x,x_ = car_boxcrop[largest_thresh][0][0],car_boxcrop[largest_thresh][1][0]
-            y,y_ = car_boxcrop[largest_thresh][0][1],car_boxcrop[largest_thresh][1][1]
-            image = image[y:y_, x:x_]
-        except:
-            print("Find no car !")
-            is_car = False
-
-        composite = image
-
-        return composite,is_car
-    ################################################################################
 
     def overlay_keypoints(self, image, predictions):
         keypoints = predictions.get_field("keypoints")
