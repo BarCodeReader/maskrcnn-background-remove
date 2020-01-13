@@ -197,7 +197,10 @@ class COCODemo(object):
         )
         return transform
 
-    def run_on_opencv_image(self, image):
+    def run_on_opencv_image(self, image, category = None,is_crop = False, multi_object = False):
+        if category is None:
+            print("Please give categories parameter to inference.")
+            assert False
         """
         Arguments:
             image (np.ndarray): an image as returned by OpenCV
@@ -220,9 +223,11 @@ class COCODemo(object):
         if self.cfg.MODEL.MASK_ON:
             #print("result")
             #result = self.overlay_mask(result, top_predictions)
-            result,is_car = self.overlay_mask_full(result, top_predictions, boxSize, boxCrop)
+            result,is_car = self.overlay_mask_full(result, top_predictions, boxSize, boxCrop, category ,is_crop = is_crop, multi_object = multi_object)
         if self.cfg.MODEL.KEYPOINT_ON:
             result = self.overlay_keypoints(result, top_predictions)
+        
+        # Don't print lable in image
         #result = self.overlay_class_names(result, top_predictions)
 
         return result,is_car
@@ -348,7 +353,7 @@ class COCODemo(object):
         return composite
     
     ################################################################################
-    def overlay_mask_full(self, image, predictions, boxsize, boxcrop, draw = False):
+    def overlay_mask_full(self, image, predictions, boxsize, boxcrop, category, is_crop = True, draw = False, multi_object = False):
 
         masks = predictions.get_field("mask").numpy()
         labels = predictions.get_field("labels")
@@ -378,30 +383,50 @@ class COCODemo(object):
             #image = image * mask.astype(np.uint8)
         #image = cv2.bitwise_and(image, mask3)
         #print(image.shape)
+        
         car_thresh = []
         car_boxsize = []
         car_boxcrop = []
-        is_car = True
+        is_find = True
         for i in range(len(lab_list)):
-            if lab_list[i]==3:
+            if lab_list[i]==category:
                 car_thresh.append(threshs[i])
                 car_boxsize.append(boxsize[i])
                 car_boxcrop.append(boxcrop[i])
         try:
             largest_thresh = np.argmax(np.array(car_boxsize))
-            image = cv2.bitwise_not(image)
-            image = cv2.bitwise_and(image, cv2.cvtColor(threshs[largest_thresh], cv2.COLOR_GRAY2BGR))
-            image = cv2.bitwise_not(image)
-            x,x_ = car_boxcrop[largest_thresh][0][0],car_boxcrop[largest_thresh][1][0]
-            y,y_ = car_boxcrop[largest_thresh][0][1],car_boxcrop[largest_thresh][1][1]
-            image = image[y:y_, x:x_]
+            
+            if not multi_object:
+                image = cv2.bitwise_not(image)
+                image = cv2.bitwise_and(image, cv2.cvtColor(threshs[largest_thresh], cv2.COLOR_GRAY2BGR))
+                image = cv2.bitwise_not(image)
+            else:
+                image = cv2.bitwise_not(image)
+                mask_or = self.add_images(car_thresh)
+                image = cv2.bitwise_and(image, cv2.cvtColor(mask_or, cv2.COLOR_GRAY2BGR))
+                image = cv2.bitwise_not(image)
+                
+            #image = cv2.bitwise_not(image)
+            if is_crop:
+                x,x_ = car_boxcrop[largest_thresh][0][0],car_boxcrop[largest_thresh][1][0]
+                y,y_ = car_boxcrop[largest_thresh][0][1],car_boxcrop[largest_thresh][1][1]
+                image = image[y:y_, x:x_]
         except:
-            print("Find no car !")
-            is_car = False
+            print("Find nothing! Return original image!")
+            is_find = False
 
         composite = image
 
-        return composite,is_car
+        return composite,is_find
+    ################################################################################
+    def add_images(self, masks):
+        #print("maks")
+        #print(mask[0])
+        mask = masks[0]
+        for i in range(1, len(masks)):
+            mask = cv2.bitwise_or(mask,masks[i])
+        #img = np.sum(images, axis=1)
+        return mask
     ################################################################################
 
     def overlay_keypoints(self, image, predictions):
