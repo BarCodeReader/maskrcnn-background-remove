@@ -1,3 +1,46 @@
+# Data preprocessing unsing Mask R-CNN
+
+this project was aim to provide no background images for my next project [pytorch-car-pix2pix](https://github.com/tony92151/pytorch-car-pix2pix). We found Mask R-CNN which provide up to 80 categories perfectly meet our need.
+
+![](images/image1.jpg)
+
+## Demo code
+
+```python=
+from maskrcnn_benchmark.config import cfg
+from predictor import COCODemo
+
+config_file = "../configs/caffe2/e2e_mask_rcnn_R_50_FPN_1x_caffe2.yaml"
+cfg.merge_from_file(config_file)
+
+coco_demo = COCODemo(
+    cfg,
+    min_image_size=800,
+    confidence_threshold=0.7,
+)
+
+image = cv2.imread("xxx.jpg", cv2.IMREAD_COLOR)
+
+predictions,isfind = coco_demo.run_on_opencv_image(
+                                                image,
+                                                category = 1,
+                                                is_crop = False, 
+                                                multi_object = False)
+```
+
+* `category`:
+choose which target category you need.
+* `is_crop`:(default False)
+If True, the image will filter by target category and crop with biggest bounding box. 
+If False, the image will just filter by target category and remain image size.
+* `multi_object`: (default False)
+If true, the image will just filter by target category.
+If False, the image will filter by target category and only mask for the target which have biggest bounding box
+
+See [demo file](demo/mask_demo.ipynb)
+
+===================================================================
+
 # Faster R-CNN and Mask R-CNN in PyTorch 1.0
 
 This project aims at providing the necessary building blocks for easily
